@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  # 1. Redis Service (for deduplicated caching & native ZRANGEBYSCORE price filtering)
+  redis:
+    image: redis:7-alpine
+    container_name: hotel-orchestrator-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hotel-network
+
+  # 2. Temporal Server (Dev server with Web UI)
+  temporal:
+    image: temporalio/dev-server:latest
+    container_name: hotel-orchestrator-temporal
+    command: ["--ip", "0.0.0.0", "--headless", "false"]
+    ports:
+      - "7233:7233" # gRPC API
+      - "8233:8233" # Temporal Web UI
+    networks:
+      - hotel-network
+
+  # 3. Hotel Orchestrator API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hotel-orchestrator-api
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TEMPORAL_ADDRESS=temporal:7233
+      - API_BASE_URL=http://api:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    networks:
+      - hotel-network
+
+  # 4. Temporal Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hotel-orchestrator-worker
+    command: ["node", "dist/temporal/worker.js"]
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TEMPORAL_ADDRESS=temporal:7233
+      - API_BASE_URL=http://api:3000
+    depends_on:
+      - api
+      - temporal
+      - redis
+    networks:
+      - hotel-network
+
+networks:
+  hotel-network:
+    driver: bridge

@@ -1,0 +1,152 @@
+{
+  "info": {
+    "name": "Hotel Offer Orchestrator",
+    "description": "Postman Collection for testing Hotel Offer Orchestrator API (Express + Temporal.io + Redis)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Orchestrate Offers - Valid City (Delhi)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            {
+              "key": "city",
+              "value": "delhi",
+              "description": "City with overlapping supplier offers"
+            }
+          ]
+        },
+        "description": "Fetches, deduplicates, and returns lowest price per hotel across Supplier A and B."
+      }
+    },
+    {
+      "name": "2. Filter by Price Range (Redis ZRANGEBYSCORE)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi&minPrice=5000&maxPrice=6000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            {
+              "key": "city",
+              "value": "delhi"
+            },
+            {
+              "key": "minPrice",
+              "value": "5000"
+            },
+            {
+              "key": "maxPrice",
+              "value": "6000"
+            }
+          ]
+        },
+        "description": "Filters deduplicated hotels stored in Redis Sorted Set by price range."
+      }
+    },
+    {
+      "name": "3. Orchestrate Offers - No Results (Unknown City)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=unknowncity",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            {
+              "key": "city",
+              "value": "unknowncity"
+            }
+          ]
+        },
+        "description": "Tests behavior when no hotels match the requested city."
+      }
+    },
+    {
+      "name": "4. Health Check (Bonus)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Checks the health status of Supplier A, Supplier B, and Redis."
+      }
+    },
+    {
+      "name": "5. Mock Supplier A",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/supplierA/hotels?city=delhi",
+          "host": ["{{baseUrl}}"],
+          "path": ["supplierA", "hotels"],
+          "query": [
+            {
+              "key": "city",
+              "value": "delhi"
+            }
+          ]
+        },
+        "description": "Direct response from Mock Supplier A."
+      }
+    },
+    {
+      "name": "6. Mock Supplier B",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/supplierB/hotels?city=delhi",
+          "host": ["{{baseUrl}}"],
+          "path": ["supplierB", "hotels"],
+          "query": [
+            {
+              "key": "city",
+              "value": "delhi"
+            }
+          ]
+        },
+        "description": "Direct response from Mock Supplier B."
+      }
+    },
+    {
+      "name": "7. Simulate Supplier Down (Chaos Test)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/supplierA/hotels?simulateDown=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["supplierA", "hotels"],
+          "query": [
+            {
+              "key": "simulateDown",
+              "value": "true"
+            }
+          ]
+        },
+        "description": "Simulates 503 Service Unavailable on Supplier A."
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ]
+}

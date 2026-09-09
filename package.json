@@ -6,16 +6,25 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/app.ts",
+    "worker": "tsx src/temporal/worker.ts",
+    "worker:dev": "tsx watch src/temporal/worker.ts",
     "build": "tsc",
     "start": "node dist/app.js",
     "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@temporalio/activity": "^1.23.0",
+    "@temporalio/client": "^1.23.0",
+    "@temporalio/worker": "^1.23.0",
+    "@temporalio/workflow": "^1.23.0",
     "axios": "^1.20.0",
-    "express": "^5.2.1"
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
+    "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.5.0",
     "tsx": "^4.23.13",
