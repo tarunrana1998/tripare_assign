@@ -6,6 +6,10 @@ const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined;
 
 let redisClient: Redis | null = null;
+let isRedisAvailable = false;
+
+// In-memory fallback sorted set store for standalone localhost runs without Redis
+const memoryZSetStore = new Map<string, BestOfferHotel[]>();
 
 /**
  * Returns a singleton Redis instance
@@ -17,15 +21,21 @@ export function getRedisClient(): Redis {
       port: REDIS_PORT,
       password: REDIS_PASSWORD,
       lazyConnect: true,
-      maxRetriesPerRequest: 2,
+      maxRetriesPerRequest: 1,
       retryStrategy(times) {
-        if (times > 3) return null;
-        return Math.min(times * 100, 1000);
+        if (times > 2) return null;
+        return 200;
       },
     });
 
+    redisClient.on("connect", () => {
+      isRedisAvailable = true;
+      console.log("[Redis] Connected to Redis server successfully.");
+    });
+
     redisClient.on("error", (err) => {
-      console.warn(`[Redis] Connection warning: ${err.message}`);
+      isRedisAvailable = false;
+      // Silent in local fallback mode
     });
   }
 
@@ -48,10 +58,13 @@ export async function saveHotelsToRedis(
   hotels: BestOfferHotel[],
   ttlSeconds = 3600
 ): Promise<void> {
-  const client = getRedisClient();
   const key = getCityHotelsKey(city);
 
+  // Always update memory store for instantaneous fallback
+  memoryZSetStore.set(key, [...hotels].sort((a, b) => a.price - b.price));
+
   try {
+    const client = getRedisClient();
     if (client.status === "wait") {
       await client.connect();
     }
@@ -60,7 +73,7 @@ export async function saveHotelsToRedis(
     pipeline.del(key);
 
     for (const hotel of hotels) {
-      // Member is the JSON representation, Score is the price for native Redis filtering
+      // Member is JSON, Score is price for native Redis filtering
       pipeline.zadd(key, hotel.price, JSON.stringify(hotel));
     }
 
@@ -71,7 +84,8 @@ export async function saveHotelsToRedis(
     await pipeline.exec();
     console.log(`[Redis] Successfully saved ${hotels.length} hotels to sorted set "${key}"`);
   } catch (error) {
-    console.warn(`[Redis] Could not save hotels to Redis: ${(error as Error).message}`);
+    // Graceful fallback to memory store
+    console.log(`[Redis Cache] Saved ${hotels.length} hotels for "${city}" in local memory store (Redis offline).`);
   }
 }
 
@@ -83,39 +97,47 @@ export async function getHotelsFromRedisByPriceRange(
   minPrice?: number,
   maxPrice?: number
 ): Promise<BestOfferHotel[] | null> {
-  const client = getRedisClient();
   const key = getCityHotelsKey(city);
 
   try {
+    const client = getRedisClient();
     if (client.status === "wait") {
       await client.connect();
     }
 
     const exists = await client.exists(key);
-    if (!exists) {
-      return null;
+    if (exists) {
+      const minScore = minPrice !== undefined ? minPrice : "-inf";
+      const maxScore = maxPrice !== undefined ? maxPrice : "+inf";
+
+      // Native Redis Price Filtering using ZRANGEBYSCORE
+      const members = await client.zrangebyscore(key, minScore, maxScore);
+      return members.map((m) => JSON.parse(m) as BestOfferHotel);
     }
-
-    const minScore = minPrice !== undefined ? minPrice : "-inf";
-    const maxScore = maxPrice !== undefined ? maxPrice : "+inf";
-
-    // Native Redis Price Filtering using ZRANGEBYSCORE
-    const members = await client.zrangebyscore(key, minScore, maxScore);
-
-    return members.map((m) => JSON.parse(m) as BestOfferHotel);
   } catch (error) {
-    console.warn(`[Redis] Failed to query Redis cache: ${(error as Error).message}`);
+    // Redis unavailable, use memory store
+  }
+
+  // In-memory fallback querying
+  const memoryHotels = memoryZSetStore.get(key);
+  if (!memoryHotels) {
     return null;
   }
+
+  return memoryHotels.filter((hotel) => {
+    if (minPrice !== undefined && hotel.price < minPrice) return false;
+    if (maxPrice !== undefined && hotel.price > maxPrice) return false;
+    return true;
+  });
 }
 
 /**
  * Check Redis health status
  */
-export async function checkRedisHealth(): Promise<{ status: "healthy" | "unhealthy"; latencyMs?: number; error?: string }> {
-  const client = getRedisClient();
+export async function checkRedisHealth(): Promise<{ status: "healthy" | "unhealthy" | "memory_fallback"; latencyMs?: number; error?: string }> {
   const start = Date.now();
   try {
+    const client = getRedisClient();
     if (client.status === "wait") {
       await client.connect();
     }
@@ -126,8 +148,8 @@ export async function checkRedisHealth(): Promise<{ status: "healthy" | "unhealt
     };
   } catch (err) {
     return {
-      status: "unhealthy",
-      error: (err as Error).message,
+      status: "memory_fallback",
+      error: "Redis server not running on localhost:6379 (using built-in memory fallback)",
     };
   }
 }

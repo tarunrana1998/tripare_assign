@@ -1,6 +1,6 @@
 import { Connection, Client } from "@temporalio/client";
 import { hotelOfferOrchestratorWorkflow } from "./workflows.js";
-import { TASK_QUEUE } from "./worker.js";
+import { TASK_QUEUE } from "./constants.js";
 import type { BestOfferHotel } from "../types/hotel.js";
 import {
   fetchSupplierAActivity,

@@ -1,8 +1,7 @@
 import { NativeConnection, Worker } from "@temporalio/worker";
 import * as activities from "./activities.js";
 import { fileURLToPath } from "node:url";
-
-export const TASK_QUEUE = process.env.TEMPORAL_TASK_QUEUE || "hotel-offer-orchestrator-queue";
+import { TASK_QUEUE } from "./constants.js";
 
 async function runWorker() {
   const address = process.env.TEMPORAL_ADDRESS || "localhost:7233";
